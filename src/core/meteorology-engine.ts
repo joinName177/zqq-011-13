@@ -6,6 +6,7 @@ import {
   ExtremeWeatherAlert,
   SynopticChartData
 } from './models';
+import { CAPACITY, clampNote, rankAlerts } from './limits';
 
 export const TAG_METAS: Record<string, MoodTagMeta> = {
   '晴空万里': {
@@ -109,7 +110,7 @@ export function createRecordFromTag(tag: string, intensity: number, note: string
     date: dateStr || new Date().toISOString().split('T')[0],
     tag,
     intensity,
-    note: note.trim() || '平静观测记录',
+    note: clampNote(note) || '平静观测记录',
     pressureHpa,
     temperatureC,
     humidityPercent,
@@ -266,11 +267,14 @@ export function evaluateSynopticSystem(records: MoodRecord[]): SynopticChartData
     });
   }
 
+  // 预警按严重级别排序并在领域层封顶，避免预警数量失控拖垮展示
+  const rankedAlerts = rankAlerts(alerts).slice(0, CAPACITY.MAX_DOMAIN_ALERTS);
+
   // Determine system type
   let pressureSystemType: SynopticChartData['pressureSystemType'] = '温带反气旋平稳';
   if (avgPressure >= 1020) pressureSystemType = '副热带高压晴空';
   else if (avgPressure < 990) pressureSystemType = '强烈冷涡旋';
-  else if (alerts.length > 0) pressureSystemType = '锋面气旋多变';
+  else if (rankedAlerts.length > 0) pressureSystemType = '锋面气旋多变';
   else pressureSystemType = '深槽低气压阴霾';
 
   return {
@@ -281,8 +285,8 @@ export function evaluateSynopticSystem(records: MoodRecord[]): SynopticChartData
     averagePressure: avgPressure,
     zones,
     monsoon,
-    alerts,
+    alerts: rankedAlerts,
     pressureSystemType,
-    metSummary: `气象综观显示：当前心境领空受【${pressureSystemType}】统御。全周期平均气压 ${avgPressure} hPa，近期主要受【${monsoon.vectorName}】影响。${alerts.length > 0 ? `当前挂起 ${alerts.length} 个灾害性气象预警！` : '整层大气环流平稳，无破坏性对流。'}`
+    metSummary: `气象综观显示：当前心境领空受【${pressureSystemType}】统御。全周期平均气压 ${avgPressure} hPa，近期主要受【${monsoon.vectorName}】影响。${rankedAlerts.length > 0 ? `当前挂起 ${rankedAlerts.length} 个灾害性气象预警！` : '整层大气环流平稳，无破坏性对流。'}`
   };
 }

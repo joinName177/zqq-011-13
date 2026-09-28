@@ -1,11 +1,14 @@
 import { SynopticChartData, MoodRecord } from '../core/models';
 import { TAG_METAS } from '../core/meteorology-engine';
+import { CAPACITY, previewText } from '../core/limits';
+import { NOTE_MAX_LENGTH } from '../core/export';
 
 export interface WeatherUIHandlers {
   onOpenLogModal: () => void;
   onResetData: () => void;
   onSubmitLog: (tag: string, intensity: number, note: string) => void;
   onSelectRecord: (record: MoodRecord) => void;
+  onExportData: () => void;
 }
 
 export function renderWeatherApp(
@@ -23,6 +26,13 @@ export function renderWeatherApp(
 ) {
   const cur = chartData.currentRecord;
   const meta = TAG_METAS[cur.tag] || TAG_METAS['阴转多云'];
+
+  // 展示层数量保护：统计仍基于完整 records，仅限制实际渲染的条目
+  const totalRecordCount = chartData.records.length;
+  const visibleRecords = chartData.records.slice(-CAPACITY.MAX_TIMELINE_RECORDS);
+  const hiddenRecordCount = totalRecordCount - visibleRecords.length;
+  const visibleAlerts = chartData.alerts.slice(0, CAPACITY.MAX_DISPLAYED_ALERTS);
+  const hiddenAlertCount = chartData.alerts.length - visibleAlerts.length;
 
   const esc = (s: string) =>
     s.replace(/[&<>'"]/g, t => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[t] || t));
@@ -120,20 +130,21 @@ export function renderWeatherApp(
         </div>
         <div class="met-header-actions">
           <button class="btn-reset" id="btnReset">🔄 重置示例气象序列</button>
+          <button class="btn-reset" id="btnExport" title="导出全部观测记录为 CSV">📤 导出数据</button>
           <button class="btn-record-mood" id="btnOpenLog">✍️ 记录今日心情天气</button>
         </div>
       </header>
 
       ${
-        chartData.alerts.length > 0
+        visibleAlerts.length > 0
           ? `
         <div class="alert-banner">
           <div class="alert-banner-left">
-            <span class="alert-tag">${chartData.alerts[0].level}预警</span>
-            <strong>${esc(chartData.alerts[0].title)}</strong>
-            <span style="font-size:13px;color:var(--met-text);">${esc(chartData.alerts[0].triggerCause)}</span>
+            <span class="alert-tag">${visibleAlerts[0].level}预警</span>
+            <strong>${esc(visibleAlerts[0].title)}</strong>
+            <span class="alert-banner-cause">${esc(previewText(visibleAlerts[0].triggerCause))}</span>
           </div>
-          <span style="font-size:12px;color:var(--met-muted);">${chartData.alerts[0].issuedTime} 发布</span>
+          <span style="font-size:12px;color:var(--met-muted);white-space:nowrap;">${visibleAlerts[0].issuedTime} 发布${hiddenAlertCount > 0 ? ` · 另有 ${hiddenAlertCount} 条预警折叠` : ''}</span>
         </div>
       `
           : ''
@@ -187,12 +198,17 @@ export function renderWeatherApp(
 
           <!-- Recent Days Sequence Strip -->
           <div class="timeline-section">
-            <h3>📅 近期气象观测序列 (点击切换观测标本)</h3>
+            <h3>
+              📅 近期气象观测序列 (点击切换观测标本)
+              <span class="capacity-hint">
+                展示最近 ${visibleRecords.length} / ${totalRecordCount} 条
+              </span>
+            </h3>
             <div class="records-strip">
-              ${chartData.records
+              ${visibleRecords
                 .map(
                   r => `
-                <div class="record-pill ${r.id === cur.id ? 'active' : ''}" data-id="${r.id}">
+                <div class="record-pill ${r.id === cur.id ? 'active' : ''}" data-id="${r.id}" title="${esc(previewText(r.note, 120))}">
                   <div class="pill-date">${r.date.slice(5)}</div>
                   <div class="pill-icon">${(TAG_METAS[r.tag] || TAG_METAS['阴转多云']).icon}</div>
                   <div class="pill-tag">${esc(r.tag)}</div>
@@ -202,6 +218,11 @@ export function renderWeatherApp(
                 )
                 .join('')}
             </div>
+            ${
+              hiddenRecordCount > 0
+                ? `<div class="capacity-note">为保证页面流畅，已折叠 ${hiddenRecordCount} 条更早的观测记录；统计与导出仍基于全部 ${totalRecordCount} 条数据。</div>`
+                : ''
+            }
           </div>
         </main>
 
@@ -254,8 +275,8 @@ export function renderWeatherApp(
             <h3>⚠️ 极端天气预警与自愈指南</h3>
             <div class="alerts-list">
               ${
-                chartData.alerts.length > 0
-                  ? chartData.alerts
+                visibleAlerts.length > 0
+                  ? visibleAlerts
                       .map(
                         a => `
                     <div class="alert-item ${a.level}">
@@ -263,11 +284,19 @@ export function renderWeatherApp(
                         <span class="alert-name">${esc(a.title)}</span>
                         <span class="alert-level-badge" style="background:rgba(255,255,255,0.1);color:#fff;">${a.level}</span>
                       </div>
-                      <div class="alert-cause">${esc(a.triggerCause)}</div>
+                      <div class="alert-cause" title="${esc(a.triggerCause)}">${esc(previewText(a.triggerCause, CAPACITY.MAX_PREVIEW_LENGTH))}</div>
                       <div class="defense-guide-title">🛡️ 防灾避险自愈协议：</div>
                       <ul class="defense-list">
-                        ${a.defenseProtocol.map(p => `<li>${esc(p)}</li>`).join('')}
+                        ${a.defenseProtocol
+                          .slice(0, CAPACITY.MAX_DEFENSE_STEPS)
+                          .map(p => `<li>${esc(p)}</li>`)
+                          .join('')}
                       </ul>
+                      ${
+                        a.defenseProtocol.length > CAPACITY.MAX_DEFENSE_STEPS
+                          ? `<div class="capacity-note">其余 ${a.defenseProtocol.length - CAPACITY.MAX_DEFENSE_STEPS} 条协议已折叠，请优先执行以上步骤。</div>`
+                          : ''
+                      }
                     </div>
                   `
                       )
@@ -277,6 +306,11 @@ export function renderWeatherApp(
                       ✅ 当前心境空域晴朗，无活动极端灾害天气警报。
                     </div>
                   `
+              }
+              ${
+                hiddenAlertCount > 0
+                  ? `<div class="capacity-note">另有 ${hiddenAlertCount} 条较低级别预警已折叠，按红 → 橙 → 黄 → 蓝顺序优先展示。</div>`
+                  : ''
               }
             </div>
           </section>
@@ -311,8 +345,11 @@ export function renderWeatherApp(
             </div>
 
             <div class="form-group">
-              <label>观测记录与心绪注记：</label>
-              <textarea class="form-textarea" id="noteInput" placeholder="写下引起今天气压变化的事情或思绪...">${esc(noteText)}</textarea>
+              <label>
+                观测记录与心绪注记：
+                <span class="note-counter" id="noteCounter">${noteText.length} / ${NOTE_MAX_LENGTH}</span>
+              </label>
+              <textarea class="form-textarea" id="noteInput" maxlength="${NOTE_MAX_LENGTH}" placeholder="写下引起今天气压变化的事情或思绪...">${esc(noteText)}</textarea>
             </div>
 
             <div class="modal-footer">
@@ -330,6 +367,7 @@ export function renderWeatherApp(
   // Attach event listeners
   container.querySelector('#btnOpenLog')?.addEventListener('click', handlers.onOpenLogModal);
   container.querySelector('#btnReset')?.addEventListener('click', handlers.onResetData);
+  container.querySelector('#btnExport')?.addEventListener('click', handlers.onExportData);
 
   container.querySelectorAll('.record-pill').forEach(pill => {
     pill.addEventListener('click', () => {
@@ -355,8 +393,11 @@ export function renderWeatherApp(
     }
 
     const noteBox = container.querySelector('#noteInput') as HTMLTextAreaElement;
+    const noteCounter = container.querySelector('#noteCounter');
     if (noteBox) {
       noteBox.addEventListener('input', () => {
+        // 输入阶段只同步状态与计数，避免逐字重渲染导致输入卡顿
+        if (noteCounter) noteCounter.textContent = `${noteBox.value.length} / ${NOTE_MAX_LENGTH}`;
         onNoteChange(noteBox.value);
       });
     }

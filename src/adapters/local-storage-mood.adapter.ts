@@ -1,6 +1,7 @@
 import { MoodRecord } from '../core/models';
 import { MoodRepositoryPort } from '../ports/mood-repository.port';
 import { createRecordFromTag } from '../core/meteorology-engine';
+import { capRecordList, clampNote } from '../core/limits';
 
 const STORAGE_KEY = 'mood_meteorology_records_v1';
 
@@ -13,10 +14,10 @@ export class LocalStorageMoodAdapter implements MoodRepositoryPort {
     try {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        return this.sanitize(parsed);
       }
     } catch {
-      // ignore
+      // 数据损坏时回退示例序列，保证界面始终有安全状态
     }
     return this.resetToSample();
   }
@@ -26,12 +27,12 @@ export class LocalStorageMoodAdapter implements MoodRepositoryPort {
     // remove existing for same date if any
     const filtered = records.filter(r => r.date !== record.date);
     filtered.push(record);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+    this.persist(filtered);
   }
 
   delete(id: string): void {
     const records = this.getAll().filter(r => r.id !== id);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+    this.persist(records);
   }
 
   resetToSample(): MoodRecord[] {
@@ -59,7 +60,47 @@ export class LocalStorageMoodAdapter implements MoodRepositoryPort {
       return createRecordFromTag(item.tag, item.intensity, item.note, dateStr);
     });
 
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+    this.writeStorage(records);
     return records;
+  }
+
+  /** 规整外部读取到的记录：过滤残缺项、截断超长备注、裁剪到容量上限 */
+  private sanitize(parsed: unknown[]): MoodRecord[] {
+    const valid = parsed.filter(
+      (item): item is MoodRecord =>
+        !!item &&
+        typeof item === 'object' &&
+        typeof (item as MoodRecord).id === 'string' &&
+        typeof (item as MoodRecord).date === 'string' &&
+        typeof (item as MoodRecord).tag === 'string'
+    );
+    const normalized = valid.map(item => ({
+      ...item,
+      note: clampNote(String(item.note ?? '')) || '平静观测记录'
+    }));
+    return capRecordList(normalized);
+  }
+
+  /** 写入前统一裁剪到容量上限，超出容量时保留日期最近的记录 */
+  private persist(records: MoodRecord[]): void {
+    this.writeStorage(capRecordList(records));
+  }
+
+  private writeStorage(records: MoodRecord[]): void {
+    const attempt = (list: MoodRecord[]) => {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    if (attempt(records)) return;
+    // 存储配额溢出时，按容量的一半逐级丢弃最旧记录后重试
+    let survivors = capRecordList(records);
+    while (survivors.length > 0) {
+      survivors = survivors.slice(Math.ceil(survivors.length / 2));
+      if (attempt(survivors)) return;
+    }
   }
 }

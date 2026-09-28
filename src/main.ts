@@ -7,6 +7,7 @@ import { renderWeatherApp } from './ui/app';
 import { summarizeMood, chartSummary } from './core/mood-summary';
 import { moodTelemetry } from './adapters/mood-telemetry';
 import { buildBugSurface } from './adapters/quality/bugSurface';
+import { downloadRecordsCsv } from './core/export';
 
 const repo = new LocalStorageMoodAdapter();
 const metEngine = new MeteorologyEngineAdapter();
@@ -54,12 +55,17 @@ function refreshView() {
       },
       onSubmitLog: (tag: string, intensity: number, note: string) => {
         const todayStr = new Date().toISOString().split('T')[0];
+        // 入口再做一次容量规整，防止绕过界面直接写入超长文本
         const newRecord = createRecordFromTag(tag, intensity, note, todayStr);
         repo.add(newRecord);
         records = repo.getAll();
         chartData = metEngine.generateSynopticChart(records);
         isModalOpen = false;
         refreshView();
+      },
+      onExportData: () => {
+        // 导出基于完整数据快照，不受时间线渲染条数限制
+        downloadRecordsCsv(repo.getAll());
       },
       onSelectRecord: (record: MoodRecord) => {
         // Re-generate chart focusing on this record
