@@ -6,6 +6,7 @@ import {
   ExtremeWeatherAlert,
   SynopticChartData
 } from './models';
+import { clampText, MAX_NOTE_LENGTH } from './limits';
 
 export const TAG_METAS: Record<string, MoodTagMeta> = {
   '晴空万里': {
@@ -109,7 +110,7 @@ export function createRecordFromTag(tag: string, intensity: number, note: string
     date: dateStr || new Date().toISOString().split('T')[0],
     tag,
     intensity,
-    note: note.trim() || '平静观测记录',
+    note: clampText(note, MAX_NOTE_LENGTH) || '平静观测记录',
     pressureHpa,
     temperatureC,
     humidityPercent,

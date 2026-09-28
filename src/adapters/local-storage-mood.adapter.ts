@@ -1,6 +1,7 @@
 import { MoodRecord } from '../core/models';
 import { MoodRepositoryPort } from '../ports/mood-repository.port';
 import { createRecordFromTag } from '../core/meteorology-engine';
+import { capRecordsByDate, clampText, MAX_NOTE_LENGTH, MAX_RECORDS_STORED } from '../core/limits';
 
 const STORAGE_KEY = 'mood_meteorology_records_v1';
 
@@ -13,7 +14,7 @@ export class LocalStorageMoodAdapter implements MoodRepositoryPort {
     try {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        return this.sanitize(parsed);
       }
     } catch {
       // ignore
@@ -25,13 +26,23 @@ export class LocalStorageMoodAdapter implements MoodRepositoryPort {
     const records = this.getAll();
     // remove existing for same date if any
     const filtered = records.filter(r => r.date !== record.date);
-    filtered.push(record);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+    filtered.push(this.sanitizeRecord(record));
+    // 容量保护：仅保留最近 MAX_RECORDS_STORED 条，避免无限增长拖垮存储与渲染
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(capRecordsByDate(filtered, MAX_RECORDS_STORED)));
   }
 
   delete(id: string): void {
     const records = this.getAll().filter(r => r.id !== id);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+  }
+
+  /** 统一清洗记录：截断超长备注并裁剪记录总量，兼容历史遗留的超标数据。 */
+  private sanitize(records: MoodRecord[]): MoodRecord[] {
+    return capRecordsByDate(records.map(r => this.sanitizeRecord(r)), MAX_RECORDS_STORED);
+  }
+
+  private sanitizeRecord(record: MoodRecord): MoodRecord {
+    return { ...record, note: clampText(record.note ?? '', MAX_NOTE_LENGTH) || '平静观测记录' };
   }
 
   resetToSample(): MoodRecord[] {

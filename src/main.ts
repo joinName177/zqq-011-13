@@ -20,18 +20,25 @@ let selectedIntensity = 5;
 let noteText = '';
 
 const rootEl = document.getElementById('app')!;
-const bugSurface = buildBugSurface([records.length, chartData.zones.length]);
-rootEl.dataset.moodSummary = JSON.stringify({
-  summary: summarizeMood(records),
-  chart: chartSummary(chartData),
-  telemetry: moodTelemetry('initial'),
-  bugSurface,
-  preembeddedBugCount: bugSurface.bugs.length,
-  hellBugCount: bugSurface.bugs.filter((bug) => bug.level === 'hell').length,
-  difficultBugCount: bugSurface.bugs.filter((bug) => bug.level === 'difficult').length
-});
+
+// 导出摘要始终基于完整记录集计算（展示层的数量/文本限制不影响统计口径），
+// 并在每次视图刷新时同步，保证导出结果与当前数据一致。
+function syncExportSnapshot() {
+  const bugSurface = buildBugSurface([records.length, chartData.zones.length]);
+  rootEl.dataset.moodSummary = JSON.stringify({
+    summary: summarizeMood(records),
+    chart: chartSummary(chartData),
+    telemetry: moodTelemetry('initial'),
+    bugSurface,
+    preembeddedBugCount: bugSurface.bugs.length,
+    hellBugCount: bugSurface.bugs.filter((bug) => bug.level === 'hell').length,
+    difficultBugCount: bugSurface.bugs.filter((bug) => bug.level === 'difficult').length
+  });
+}
+syncExportSnapshot();
 
 function refreshView() {
+  syncExportSnapshot();
   renderWeatherApp(
     rootEl,
     chartData,

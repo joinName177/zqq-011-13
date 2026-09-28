@@ -1,5 +1,14 @@
 import { SynopticChartData, MoodRecord } from '../core/models';
 import { TAG_METAS } from '../core/meteorology-engine';
+import {
+  clampText,
+  MAX_ALERTS_DISPLAY,
+  MAX_DEFENSE_DISPLAY,
+  MAX_NOTE_LENGTH,
+  MAX_TEXT_DISPLAY,
+  MAX_TIMELINE_DISPLAY,
+  MAX_TITLE_DISPLAY
+} from '../core/limits';
 
 export interface WeatherUIHandlers {
   onOpenLogModal: () => void;
@@ -26,6 +35,14 @@ export function renderWeatherApp(
 
   const esc = (s: string) =>
     s.replace(/[&<>'"]/g, t => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[t] || t));
+
+  // 展示数量限制：记录按日期升序，仅渲染最近 N 条，其余折叠提示，避免条带无限拉长
+  const timelineRecords = chartData.records.slice(-MAX_TIMELINE_DISPLAY);
+  const hiddenRecordCount = chartData.records.length - timelineRecords.length;
+
+  // 预警展示上限：优先展示最高等级的前 N 条，其余折叠，防止右栏溢出
+  const visibleAlerts = chartData.alerts.slice(0, MAX_ALERTS_DISPLAY);
+  const hiddenAlertCount = chartData.alerts.length - visibleAlerts.length;
 
   // Generate Isobar SVG paths dynamically based on records
   const isobarsSvg = `
@@ -130,10 +147,10 @@ export function renderWeatherApp(
         <div class="alert-banner">
           <div class="alert-banner-left">
             <span class="alert-tag">${chartData.alerts[0].level}预警</span>
-            <strong>${esc(chartData.alerts[0].title)}</strong>
-            <span style="font-size:13px;color:var(--met-text);">${esc(chartData.alerts[0].triggerCause)}</span>
+            <strong>${esc(clampText(chartData.alerts[0].title, MAX_TITLE_DISPLAY))}</strong>
+            <span class="alert-banner-cause">${esc(clampText(chartData.alerts[0].triggerCause, MAX_TEXT_DISPLAY))}</span>
           </div>
-          <span style="font-size:12px;color:var(--met-muted);">${chartData.alerts[0].issuedTime} 发布</span>
+          <span style="font-size:12px;color:var(--met-muted);white-space:nowrap;">${chartData.alerts[0].issuedTime} 发布</span>
         </div>
       `
           : ''
@@ -188,14 +205,21 @@ export function renderWeatherApp(
           <!-- Recent Days Sequence Strip -->
           <div class="timeline-section">
             <h3>📅 近期气象观测序列 (点击切换观测标本)</h3>
+            <div class="timeline-hint">
+              ${
+                hiddenRecordCount > 0
+                  ? `仅展示最近 ${timelineRecords.length} 条观测标本，另有 ${hiddenRecordCount} 条历史记录已折叠（统计仍覆盖全部 ${chartData.records.length} 条）`
+                  : `共 ${timelineRecords.length} 条观测标本`
+              }
+            </div>
             <div class="records-strip">
-              ${chartData.records
+              ${timelineRecords
                 .map(
                   r => `
                 <div class="record-pill ${r.id === cur.id ? 'active' : ''}" data-id="${r.id}">
                   <div class="pill-date">${r.date.slice(5)}</div>
                   <div class="pill-icon">${(TAG_METAS[r.tag] || TAG_METAS['阴转多云']).icon}</div>
-                  <div class="pill-tag">${esc(r.tag)}</div>
+                  <div class="pill-tag">${esc(clampText(r.tag, MAX_TITLE_DISPLAY))}</div>
                   <div class="pill-pressure">${r.pressureHpa} hPa</div>
                 </div>
               `
@@ -222,7 +246,7 @@ export function renderWeatherApp(
                   <div class="zone-progress-bg">
                     <div class="zone-progress-fill" style="width: ${z.activeRatio}%"></div>
                   </div>
-                  <div class="zone-desc">${esc(z.psychologicalState)}</div>
+                  <div class="zone-desc">${esc(clampText(z.psychologicalState, MAX_TEXT_DISPLAY))}</div>
                 </div>
               `
                 )
@@ -236,15 +260,15 @@ export function renderWeatherApp(
             <div class="monsoon-card">
               <div class="monsoon-vector-title">
                 <span>🍃</span>
-                <span>${esc(chartData.monsoon.vectorName)}</span>
+                <span>${esc(clampText(chartData.monsoon.vectorName, MAX_TITLE_DISPLAY))}</span>
               </div>
               <div class="monsoon-meta">
-                <div>流场源动力：${esc(chartData.monsoon.originSource)}</div>
+                <div>流场源动力：${esc(clampText(chartData.monsoon.originSource, MAX_TEXT_DISPLAY))}</div>
                 <div>流动强度：${chartData.monsoon.flowSpeed}</div>
               </div>
               <div class="monsoon-forecast-box">
                 <strong>未来三日气象推演：</strong>
-                <div>${esc(chartData.monsoon.upcomingForecast)}</div>
+                <div>${esc(clampText(chartData.monsoon.upcomingForecast, MAX_TEXT_DISPLAY))}</div>
               </div>
             </div>
           </section>
@@ -255,18 +279,26 @@ export function renderWeatherApp(
             <div class="alerts-list">
               ${
                 chartData.alerts.length > 0
-                  ? chartData.alerts
+                  ? visibleAlerts
                       .map(
                         a => `
                     <div class="alert-item ${a.level}">
                       <div class="alert-title-row">
-                        <span class="alert-name">${esc(a.title)}</span>
+                        <span class="alert-name">${esc(clampText(a.title, MAX_TITLE_DISPLAY))}</span>
                         <span class="alert-level-badge" style="background:rgba(255,255,255,0.1);color:#fff;">${a.level}</span>
                       </div>
-                      <div class="alert-cause">${esc(a.triggerCause)}</div>
+                      <div class="alert-cause">${esc(clampText(a.triggerCause, MAX_TEXT_DISPLAY))}</div>
                       <div class="defense-guide-title">🛡️ 防灾避险自愈协议：</div>
                       <ul class="defense-list">
-                        ${a.defenseProtocol.map(p => `<li>${esc(p)}</li>`).join('')}
+                        ${a.defenseProtocol
+                          .slice(0, MAX_DEFENSE_DISPLAY)
+                          .map(p => `<li>${esc(clampText(p, MAX_TEXT_DISPLAY))}</li>`)
+                          .join('')}
+                        ${
+                          a.defenseProtocol.length > MAX_DEFENSE_DISPLAY
+                            ? `<li class="defense-more">… 其余 ${a.defenseProtocol.length - MAX_DEFENSE_DISPLAY} 条协议已折叠</li>`
+                            : ''
+                        }
                       </ul>
                     </div>
                   `
@@ -277,6 +309,11 @@ export function renderWeatherApp(
                       ✅ 当前心境空域晴朗，无活动极端灾害天气警报。
                     </div>
                   `
+              }
+              ${
+                hiddenAlertCount > 0
+                  ? `<div class="alerts-more-note">⚠️ 另有 ${hiddenAlertCount} 条预警已折叠，请优先处置上方最高等级预警。</div>`
+                  : ''
               }
             </div>
           </section>
@@ -311,8 +348,8 @@ export function renderWeatherApp(
             </div>
 
             <div class="form-group">
-              <label>观测记录与心绪注记：</label>
-              <textarea class="form-textarea" id="noteInput" placeholder="写下引起今天气压变化的事情或思绪...">${esc(noteText)}</textarea>
+              <label>观测记录与心绪注记：<span id="noteCounter" class="note-counter">${noteText.length} / ${MAX_NOTE_LENGTH}</span></label>
+              <textarea class="form-textarea" id="noteInput" maxlength="${MAX_NOTE_LENGTH}" placeholder="写下引起今天气压变化的事情或思绪...（最多 ${MAX_NOTE_LENGTH} 字）">${esc(noteText)}</textarea>
             </div>
 
             <div class="modal-footer">
@@ -356,8 +393,10 @@ export function renderWeatherApp(
 
     const noteBox = container.querySelector('#noteInput') as HTMLTextAreaElement;
     if (noteBox) {
+      const noteCounter = container.querySelector('#noteCounter');
       noteBox.addEventListener('input', () => {
         onNoteChange(noteBox.value);
+        if (noteCounter) noteCounter.textContent = `${noteBox.value.length} / ${MAX_NOTE_LENGTH}`;
       });
     }
 

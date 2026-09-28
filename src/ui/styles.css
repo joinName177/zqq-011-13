@@ -146,6 +146,17 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+.alert-banner-cause {
+  font-size: 13px;
+  color: var(--met-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .alert-tag {
@@ -272,6 +283,12 @@ body {
   font-size: 14px;
   color: var(--met-cyan);
   margin-bottom: 12px;
+}
+
+.timeline-hint {
+  font-size: 11px;
+  color: var(--met-muted);
+  margin-bottom: 10px;
 }
 
 .records-strip {
@@ -435,6 +452,17 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+.alerts-more-note {
+  font-size: 12px;
+  color: var(--met-gold);
+  background: rgba(255, 190, 11, 0.08);
+  border: 1px dashed rgba(255, 190, 11, 0.4);
+  border-radius: 6px;
+  padding: 8px 10px;
 }
 
 .alert-item {
@@ -480,6 +508,8 @@ body {
   font-size: 12px;
   color: var(--met-muted);
   margin-bottom: 8px;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .defense-guide-title {
@@ -497,6 +527,31 @@ body {
 
 .defense-list li {
   margin-bottom: 3px;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.defense-more {
+  color: var(--met-muted);
+  font-style: italic;
+  list-style: none;
+  margin-left: -16px;
+}
+
+/* Alert name / zone desc / monsoon texts: break long unbroken strings */
+.alert-name,
+.zone-desc,
+.zone-name,
+.monsoon-meta,
+.monsoon-forecast-box {
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.note-counter {
+  float: right;
+  color: var(--met-muted);
+  font-size: 11px;
 }
 
 /* Modal for Mood Recording */
